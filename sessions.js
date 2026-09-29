@@ -13,6 +13,7 @@ const pino   = require('pino');
 const QRCode = require('qrcode');
 const { getQueue, startQueue, pauseQueue } = require('./queue');
 const { handleIncomingMessages } = require('./incoming');
+const { get: getStoredMessage } = require('./messageStore');
 
 const SESSIONS_DIR = path.join(__dirname, 'sessions');
 const MAX_RECONNECT_ATTEMPTS = 5;   // berturut-turut gagal sebelum berhenti auto-retry
@@ -142,6 +143,10 @@ async function createSession(key, label) {
         connectTimeoutMs: 30_000,
         defaultQueryTimeoutMs: 30_000,
         markOnlineOnConnect: false,
+        // Tanpa ini, WhatsApp penerima yang gagal dekripsi pertama kali akan
+        // minta kirim-ulang plaintext — dan tanpa jawaban, pesan itu terus
+        // tampil "Waiting for this message" di HP penerima selamanya.
+        getMessage: async (key) => getStoredMessage(key.id) || undefined,
     });
 
     _sessions[key] = {

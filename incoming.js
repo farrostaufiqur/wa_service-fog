@@ -3,6 +3,16 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { DatabaseSync } = require('node:sqlite');
 const { getDb } = require('./db'); // wa.db (blocklist)
+const { remember: rememberSentMessage } = require('./messageStore');
+
+// Sama seperti di queue.js: catat isi balasan supaya Baileys bisa menjawab
+// permintaan retry WhatsApp saat HP penerima gagal dekripsi di percobaan
+// pertama. Tanpa ini balasan bot juga akan macet di "Waiting for this
+// message" di HP penerima.
+async function _reply(sock, jid, text) {
+    const sent = await sock.sendMessage(jid, { text });
+    if (sent?.key?.id) rememberSentMessage(sent.key.id, { conversation: text });
+}
 
 const PD_DB_PATH         = process.env.PD_DB_PATH;
 const RAPOR_DB_PATH      = process.env.RAPOR_DB_PATH;
@@ -142,18 +152,16 @@ async function handleIncomingMessages(sock, upsert) {
         if (_isBlocked(nomor)) continue; // diam total — tidak balas apapun
 
         if (!_checkRateLimit(nomor)) {
-            await sock.sendMessage(jid, {
-                text: 'Nomor Anda diblokir sementara karena mengirim perintah terlalu sering. ' +
-                      'Hubungi admin sekolah bila ini keliru.',
-            });
+            await _reply(sock, jid,
+                'Nomor Anda diblokir sementara karena mengirim perintah terlalu sering. ' +
+                'Hubungi admin sekolah bila ini keliru.');
             continue;
         }
 
         const match = text.match(FULL_RE);
         if (!match) {
-            await sock.sendMessage(jid, {
-                text: 'Format tidak dikenali.\nContoh: pd 1234567890 15/03/2010\n(NISN lalu tanggal lahir dd/mm/yyyy)',
-            });
+            await _reply(sock, jid,
+                'Format tidak dikenali.\nContoh: pd 1234567890 15/03/2010\n(NISN lalu tanggal lahir dd/mm/yyyy)');
             continue;
         }
 
@@ -166,14 +174,12 @@ async function handleIncomingMessages(sock, upsert) {
             siswa = _lookupSiswa(nisn, tanggalIso);
         } catch (err) {
             console.error('[WA] lookup siswa error:', err.message);
-            await sock.sendMessage(jid, { text: 'Terjadi kesalahan saat mencari data. Coba lagi nanti.' });
+            await _reply(sock, jid, 'Terjadi kesalahan saat mencari data. Coba lagi nanti.');
             continue;
         }
 
         if (!siswa) {
-            await sock.sendMessage(jid, {
-                text: 'Data tidak ditemukan. Pastikan NISN dan tanggal lahir (dd/mm/yyyy) sudah benar.',
-            });
+            await _reply(sock, jid, 'Data tidak ditemukan. Pastikan NISN dan tanggal lahir (dd/mm/yyyy) sudah benar.');
             continue;
         }
 
@@ -189,7 +195,7 @@ async function handleIncomingMessages(sock, upsert) {
             `Nama Ayah: ${siswa.ayah_nama || '-'}\n` +
             `Nama Ibu: ${siswa.ibu_nama || '-'}`;
 
-        await sock.sendMessage(jid, { text: reply });
+        await _reply(sock, jid, reply);
     }
 }
 

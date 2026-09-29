@@ -1,5 +1,6 @@
 'use strict';
 const { updateMessageStatus } = require('./db');
+const { remember: rememberSentMessage } = require('./messageStore');
 
 // Jeda antar pesan keluar (anti-spam / anti-lockout WA). Jeda aktual per pesan =
 // WA_SEND_DELAY_MS + acak(0 .. WA_SEND_JITTER_MS), dihitung SETELAH pesan
@@ -84,7 +85,8 @@ async function _processNext(key, sock) {
         // item.to is either a bare phone number (personal chat) or a full JID
         // (e.g. '1203xxxx@g.us' for a group) — only bare numbers need the suffix.
         const jid = item.to.includes('@') ? item.to : item.to + '@s.whatsapp.net';
-        await sock.sendMessage(jid, { text: item.message });
+        const sent = await sock.sendMessage(jid, { text: item.message });
+        if (sent?.key?.id) rememberSentMessage(sent.key.id, { conversation: item.message });
         updateMessageStatus(item.msgId, 'sent');
         _enqueuedIds.delete(item.msgId);
         console.log(`[WA] Sent to ${item.to} (msg ${item.msgId})`);
