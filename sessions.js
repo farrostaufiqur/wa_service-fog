@@ -117,8 +117,20 @@ function getSessions() { return _sessions; }
 
 function getSession(key) { return _sessions[key] || null; }
 
+// Logger Baileys dulu 'silent' total, sehingga kegagalan dekripsi / retry
+// receipt di sisi penerima ("Waiting for this message") tidak pernah terlihat.
+// Sekarang level debug, tapi hanya baris yang menyangkut retry, dekripsi,
+// sesi Signal, dan error yang diteruskan ke journal (awalan [WA-DIAG]).
+const DIAG_RE = /retry|decrypt|prekey|pre-key|bad mac|no session|session|failed|error|lid|not available/i;
+const _diagStream = {
+    write(line) {
+        if (!DIAG_RE.test(line)) return;
+        console.log('[WA-DIAG]', line.trim().slice(0, 600));
+    },
+};
+
 function _logger() {
-    return pino({ level: 'silent' });
+    return pino({ level: 'debug' }, _diagStream);
 }
 
 async function createSession(key, label) {
